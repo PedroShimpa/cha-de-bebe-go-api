@@ -14,7 +14,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	r.POST("/register", func(c *gin.Context) { controllers.Register(c, db) })
 	r.POST("/login", func(c *gin.Context) { controllers.Login(c, db) })
 
-	r.POST("/invites/:uuid/event", ctrl.GetEventByInvite)
+	r.GET("/invites/:uuid/event", ctrl.GetEventByInvite)
 	r.POST("/invites/:uuid/respond", ctrl.RespondInvite)
 
 	auth := r.Group("/api")
