@@ -69,7 +69,7 @@ func (ctrl *Controller) CreateEvent(c *gin.Context) {
 	}
 
 	for _, inv := range input.Invited {
-		uuid := utils.GenerateSlug()
+		uuid := utils.GenerateCustomUUID()
 		invited := models.EventInvited{
 			EventID: event.ID,
 			UserID:  inv.UserID,
