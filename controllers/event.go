@@ -30,14 +30,14 @@ type CreateInvitedInput struct {
 }
 
 type CreateGiftInput struct {
-    Name            string `json:"name" binding:"required"`
-    Link            string `json:"link,omitempty"`
-    MaxReservations string `json:"max_reservations,omitempty"` // string
+	Name            string `json:"name" binding:"required"`
+	Link            string `json:"link,omitempty"`
+	MaxReservations string `json:"max_reservations,omitempty"`
 }
 
 type ReserveGiftInput struct {
-	UserID      uint `json:"user_id" binding:"required"`
-	EventGiftID uint `json:"event_gift_id" binding:"required"`
+	InviteUUID  string `json:"invite_uuid" binding:"required"`
+	EventGiftID uint   `json:"event_gift_id" binding:"required"`
 }
 
 type Controller struct {
@@ -82,7 +82,7 @@ func (ctrl *Controller) CreateEvent(c *gin.Context) {
 	}
 
 	for _, gift := range input.Gifts {
-		maxRes := uint(1) // padrão
+		maxRes := uint(1)
 		if gift.MaxReservations != "" {
 			if v, err := strconv.Atoi(gift.MaxReservations); err == nil && v > 0 {
 				maxRes = uint(v)
@@ -119,43 +119,6 @@ func (ctrl *Controller) GetEvent(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"event": event})
 }
 
-func (ctrl *Controller) ReserveGift(c *gin.Context) {
-	var input ReserveGiftInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	var gift models.EventGift
-	if err := ctrl.DB.Preload("Reservations").First(&gift, input.EventGiftID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Presente não encontrado"})
-		return
-	}
-
-	if uint(len(gift.Reservations)) >= gift.MaxReservations {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Limite de reservas atingido"})
-		return
-	}
-
-	for _, r := range gift.Reservations {
-		if r.UserID == input.UserID {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Usuário já reservou este presente"})
-			return
-		}
-	}
-
-	reservation := models.GiftReservation{
-		EventGiftID: gift.ID,
-		UserID:      input.UserID,
-	}
-	if err := ctrl.DB.Create(&reservation).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Não foi possível reservar o presente"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Presente reservado com sucesso"})
-}
-
 func (ctrl *Controller) RespondInvite(c *gin.Context) {
 	inviteUUID := c.Param("uuid")
 	var invite models.EventInvited
@@ -185,6 +148,43 @@ func (ctrl *Controller) RespondInvite(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"invite": invite})
 }
 
+func (ctrl *Controller) ReserveGift(c *gin.Context) {
+	var input ReserveGiftInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var gift models.EventGift
+	if err := ctrl.DB.Preload("Reservations").First(&gift, input.EventGiftID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Presente não encontrado"})
+		return
+	}
+
+	if uint(len(gift.Reservations)) >= gift.MaxReservations {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Limite de reservas atingido"})
+		return
+	}
+
+	for _, r := range gift.Reservations {
+		if r.InviteUUID == input.InviteUUID {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Você já reservou este presente"})
+			return
+		}
+	}
+
+	reservation := models.GiftReservation{
+		EventGiftID: input.EventGiftID,
+		InviteUUID:  input.InviteUUID,
+	}
+	if err := ctrl.DB.Create(&reservation).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Não foi possível reservar o presente"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Presente reservado com sucesso"})
+}
+
 func (ctrl *Controller) GetEventByInvite(c *gin.Context) {
 	inviteUUID := c.Param("uuid")
 
@@ -210,10 +210,9 @@ func (ctrl *Controller) GetEventByInvite(c *gin.Context) {
 	event.Gifts = availableGifts
 	event.Invited = nil
 
-	c.JSON(http.StatusOK, gin.H{"event": event})
+	c.JSON(http.StatusOK, gin.H{"event": event, "invite": invite})
 }
 
-// ---------------- Editar Evento ----------------
 func (ctrl *Controller) UpdateEvent(c *gin.Context) {
 	eventID := c.Param("id")
 	userID := c.GetUint("userID")
@@ -275,7 +274,6 @@ func (ctrl *Controller) DeleteEvent(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Evento deletado com sucesso"})
 }
 
-// ---------------- Convidados ----------------
 func (ctrl *Controller) AddInvited(c *gin.Context) {
 	eventID := c.Param("id")
 	userID := c.GetUint("userID")
@@ -313,7 +311,7 @@ func (ctrl *Controller) AddInvited(c *gin.Context) {
 
 func (ctrl *Controller) RemoveInvited(c *gin.Context) {
 	eventID := c.Param("id")
-	inviteID := c.Param("invite_id")
+	InviteUUID := c.Param("invite_id")
 	userID := c.GetUint("userID")
 
 	var event models.Event
@@ -326,7 +324,7 @@ func (ctrl *Controller) RemoveInvited(c *gin.Context) {
 		return
 	}
 
-	if err := ctrl.DB.Delete(&models.EventInvited{}, inviteID).Error; err != nil {
+	if err := ctrl.DB.Delete(&models.EventInvited{}, InviteUUID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao remover convidado"})
 		return
 	}
@@ -334,7 +332,6 @@ func (ctrl *Controller) RemoveInvited(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Convidado removido com sucesso"})
 }
 
-// ---------------- Presentes ----------------
 func (ctrl *Controller) AddGift(c *gin.Context) {
 	eventID := c.Param("id")
 	userID := c.GetUint("userID")

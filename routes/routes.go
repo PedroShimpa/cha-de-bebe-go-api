@@ -11,7 +11,6 @@ import (
 )
 
 func SetupRoutes(r *gin.Engine, db *gorm.DB) {
-	// CORS liberando tudo
 	r.Use(cors.New(cors.Config{
 		AllowAllOrigins:  true,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -22,35 +21,29 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	}))
 
 	ctrl := controllers.Controller{DB: db}
-
-	// Auth
+	r.LoadHTMLGlob("templates/*")
 	r.POST("/register", func(c *gin.Context) { controllers.Register(c, db) })
 	r.POST("/login", func(c *gin.Context) { controllers.Login(c, db) })
-
-	// Convites
+	inviteCtrl := controllers.InvitePageController{}
+	r.GET("/invite", inviteCtrl.ServePage)
 	r.GET("/invites/:uuid/event", ctrl.GetEventByInvite)
 	r.POST("/invites/:uuid/respond", ctrl.RespondInvite)
+	r.POST("/gifts/reserve", ctrl.ReserveGift)
 
-	// Rotas autenticadas
 	auth := r.Group("/api")
 	auth.Use(middleware.AuthMiddleware())
 	{
-		// Eventos
 		auth.POST("/events", ctrl.CreateEvent)
 		auth.PUT("/events/:id", ctrl.UpdateEvent)
 		auth.DELETE("/events/:id", ctrl.DeleteEvent)
 		auth.GET("/events/:id", ctrl.GetEvent)
 
-		// Convidados
 		auth.POST("/events/:id/invited", ctrl.AddInvited)
 		auth.DELETE("/events/:id/invited/:invite_id", ctrl.RemoveInvited)
 
-		// Presentes
 		auth.POST("/events/:id/gifts", ctrl.AddGift)
 		auth.DELETE("/events/:id/gifts/:gift_id", ctrl.RemoveGift)
-		auth.POST("/gifts/reserve", ctrl.ReserveGift)
 
-		// Listar eventos do usuário logado
 		auth.GET("/events", func(c *gin.Context) {
 			userID := c.GetUint("userID")
 			var events []models.Event
@@ -65,4 +58,5 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 			c.JSON(200, gin.H{"events": events})
 		})
 	}
+
 }
